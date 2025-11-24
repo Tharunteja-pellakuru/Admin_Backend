@@ -699,11 +699,38 @@ app.delete("/jobs/:id", authenticateUser, async (req, res) => {
 app.post("/applicants", upload.single("resume"), async (req, res) => {
   const connection = await pool.getConnection();
   try {
-    const { job_id, full_name, email, phone, steps_json, fields_json } = req.body;
+    const { job_id, basicFormData, applicationFormData } = req.body;
     const resume_path = req.file ? `/uploads/resumes/${req.file.filename}` : null;
 
+    // Parse JSON strings if they come as strings from FormData
+    const parsedBasicFormData = typeof basicFormData === 'string' 
+      ? JSON.parse(basicFormData) 
+      : basicFormData;
+    
+    const parsedApplicationFormData = typeof applicationFormData === 'string'
+      ? JSON.parse(applicationFormData)
+      : applicationFormData;
+
+    // Extract full_name and email from basicFormData for validation and shortlisted_candidates
+    const fullNameField = parsedBasicFormData?.find(field => 
+      field.label === 'Full Name' || field.name === 'full_name' || field.name === 'fullName'
+    );
+    const emailField = parsedBasicFormData?.find(field => 
+      field.label === 'Email' || field.name === 'email'
+    );
+    const phoneField = parsedBasicFormData?.find(field => 
+      field.label === 'Phone' || field.name === 'phone'
+    );
+
+    const full_name = fullNameField?.value || '';
+    const email = emailField?.value || '';
+    const phone = phoneField?.value || '';
+
     if (!job_id || !full_name || !email) {
-      return res.status(400).json({ success: false, message: "Missing required fields" });
+      return res.status(400).json({ 
+        success: false, 
+        message: "Missing required fields: job_id, full_name, and email" 
+      });
     }
 
     if (!resume_path) {
@@ -715,24 +742,22 @@ app.post("/applicants", upload.single("resume"), async (req, res) => {
     // Generate UUID for applicant
     const applicantUuid = uuidv4();
 
-    // 1️⃣ Insert into applicants table
+    // Insert into applicants table with correct column names
     const [applicantResult] = await connection.query(
-      `INSERT INTO applicants (uuid, job_id, full_name, email, phone, steps_json, fields_json, resume_path) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO applicants (uuid, job_id, basicFormData, applicationFormData, resume_path) 
+       VALUES (?, ?, ?, ?, ?)`,
       [
         applicantUuid,
         job_id,
-        full_name,
-        email,
-        phone,
-        steps_json || JSON.stringify([]),
-        fields_json || JSON.stringify([]),
+        JSON.stringify(parsedBasicFormData || []),
+        JSON.stringify(parsedApplicationFormData || {}),
         resume_path,
       ]
     );
 
     const applicantId = applicantResult.insertId;
 
+    // Insert into shortlisted_candidates
     await connection.query(
       `INSERT INTO shortlisted_candidates 
         (job_post_id, applicant_id, full_name, email, phone, rating, status, stage)
@@ -766,7 +791,11 @@ app.post("/applicants", upload.single("resume"), async (req, res) => {
       fs.unlink(req.file.path, () => {});
     }
 
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res.status(500).json({ 
+      success: false, 
+      message: "Internal server error",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   } finally {
     connection.release();
   }
