@@ -18,7 +18,7 @@ app.use(
   cors({
     origin: ["https://admin-page-steel-three.vercel.app", "http://localhost:5173"],
     credentials: true,
-  })
+  })  
 );
 
 // Serve static files (uploads)
