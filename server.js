@@ -16,7 +16,7 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(
   cors({
-    origin: ["https://admin-page-steel-three.vercel.app", "http://localhost:5173"],
+    origin: ["https://admin-page-steel-three.vercel.app", "https://careers-page-parivartan.vercel.app"],
     credentials: true,
   })  
 );
