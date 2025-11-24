@@ -18,6 +18,10 @@ app.use(
   cors({
     origin: "https://admin-page-steel-three.vercel.app",
     credentials: true,
+    methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    exposedHeaders: ["Content-Type", "Authorization"],
+    maxAge: 86400, // 24 hours - cache preflight requests
   })  
 );
 
