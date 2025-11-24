@@ -1273,7 +1273,7 @@ app.delete("/applicants/:id", authenticateUser, async (req, res) => {
 const { sendWhatsAppMessage } = require('./sendWhatsApp');
 
 // POST /api/whatsapp/send - Send WhatsApp message
-app.post('/api/whatsapp/send', async (req, res) => {
+app.post('/api/whatsapp/send', authenticateUser, async (req, res) => {
   try {
     const { phone, message } = req.body;
 

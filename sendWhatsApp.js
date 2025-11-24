@@ -19,7 +19,7 @@ async function sendWhatsAppMessage(to, message) {
     }
 
     // Clean phone number (remove +, spaces, hyphens)
-    const cleanPhone = "918985615409"
+    const cleanPhone = to.replace(/[\s+\-()]/g, '');
 
     // Prepare payload for TEXT message
     const payload = JSON.stringify({
