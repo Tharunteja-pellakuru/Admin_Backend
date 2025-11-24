@@ -14,16 +14,19 @@ const app = express();
 
 app.use(express.json());
 app.use(cookieParser());
-app.use(
-  cors({
-    origin: "https://admin-page-steel-three.vercel.app",
-    credentials: true,
-    methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    exposedHeaders: ["Content-Type", "Authorization"],
-    maxAge: 86400, // 24 hours - cache preflight requests
-  })  
-);
+// app.use(
+//   cors({
+//     origin: "https://admin-page-steel-three.vercel.app",
+//     credentials: true,
+//     methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+//     allowedHeaders: ["Content-Type", "Authorization"],
+//     exposedHeaders: ["Content-Type", "Authorization"],
+//     maxAge: 86400, // 24 hours - cache preflight requests
+//   })  
+// );
+
+// Explicitly handle preflight requests for all routes
+app.options("*", cors());
 
 // Serve static files (uploads)
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
@@ -1271,7 +1274,7 @@ app.delete("/applicants/:id", authenticateUser, async (req, res) => {
 const { sendWhatsAppMessage } = require('./sendWhatsApp');
 
 // POST /api/whatsapp/send - Send WhatsApp message
-app.post('/api/whatsapp/send', authenticateUser, async (req, res) => {
+app.post('/api/whatsapp/send', async (req, res) => {
   try {
     const { phone, message } = req.body;
 
