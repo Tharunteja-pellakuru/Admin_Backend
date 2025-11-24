@@ -9,6 +9,8 @@ const { v4: uuidv4 } = require("uuid");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const axios = require("axios");
+
 
 const app = express();
 
@@ -1270,62 +1272,47 @@ app.delete("/applicants/:id", authenticateUser, async (req, res) => {
 });
 
 /* ------------------ WHATSAPP API ------------------ */
-const { sendWhatsAppMessage } = require('./sendWhatsApp');
 
 // POST /api/whatsapp/send - Send WhatsApp message
 app.post('/api/whatsapp/send', authenticateUser, async (req, res) => {
+const PHONE_NUMBER_ID = "818534471353814"; // Example: "123456789012345"
+const RECIPIENT = "918985615409"; // Your WhatsApp number (India format)
+const TOKEN = process.env.WHATSAPP_TOKEN; // Your Access Token
+
+async function sendWhatsAppTemplate() {
   try {
-    const { phone, message } = req.body;
+    const url = `https://graph.facebook.com/v22.0/${PHONE_NUMBER_ID}/messages`;
 
-    console.log(phone)
+    const payload = {
+      messaging_product: "whatsapp",
+      to: RECIPIENT,
+      type: "template",
+      template: {
+        name: "hello_world", // Default approved Meta template
+        language: { code: "en_US" },
+      },
+    };
 
-    // Validate input
-    if (!phone || !message) {
-      return res.status(400).json({
-        success: false,
-        error: 'Phone number and message are required'
-      });
-    }
-
-    // Validate phone number format (basic validation)
-    const cleanPhone = phone.replace(/[\s+\-()]/g, '');
-    if (!/^\d{10,15}$/.test(cleanPhone)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid phone number format. Use international format without + sign (e.g., 1234567890)'
-      });
-    }
-
-    console.log(`📱 WhatsApp send request from admin ${req.user.email} to ${phone}`);
-
-    // Send WhatsApp message
-    const result = await sendWhatsAppMessage(phone, message);
-
-    return res.status(200).json({
-      success: true,
-      messageId: result.messageId,
-      message: 'WhatsApp message sent successfully'
+    const response = await axios.post(url, payload, {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${TOKEN}`,
+      },
     });
 
+    console.log("Message Sent Successfully:");
+    console.log(response.data);
   } catch (error) {
-    console.error('❌ WhatsApp send error:', error);
-    return res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to send WhatsApp message'
-    });
+    console.log("❌ ERROR:");
+    console.log(error.response?.data || error.message);
   }
+}
+
+sendWhatsAppTemplate();
+
 });
 
-// Test endpoint to verify WhatsApp credentials (for debugging)
-app.get('/api/whatsapp/test', (req, res) => {
-  res.json({
-    success: true,
-    hasToken: !!process.env.WHATSAPP_TOKEN,
-    hasPhoneId: !!process.env.WHATSAPP_PHONE_ID,
-    tokenPrefix: process.env.WHATSAPP_TOKEN ? process.env.WHATSAPP_TOKEN.substring(0, 10) + '...' : 'NOT SET',
-    phoneId: process.env.WHATSAPP_PHONE_ID || 'NOT SET'
-  });
-});
+
 
 /* ------------------ START SERVER ------------------ */
 const startServer = async () => {
