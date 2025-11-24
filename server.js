@@ -1271,6 +1271,8 @@ app.post('/api/whatsapp/send', authenticateUser, async (req, res) => {
   try {
     const { phone, message } = req.body;
 
+    console.log(phone)
+
     // Validate input
     if (!phone || !message) {
       return res.status(400).json({
@@ -1306,6 +1308,17 @@ app.post('/api/whatsapp/send', authenticateUser, async (req, res) => {
       error: error.message || 'Failed to send WhatsApp message'
     });
   }
+});
+
+// Test endpoint to verify WhatsApp credentials (for debugging)
+app.get('/api/whatsapp/test', (req, res) => {
+  res.json({
+    success: true,
+    hasToken: !!process.env.WHATSAPP_TOKEN,
+    hasPhoneId: !!process.env.WHATSAPP_PHONE_ID,
+    tokenPrefix: process.env.WHATSAPP_TOKEN ? process.env.WHATSAPP_TOKEN.substring(0, 10) + '...' : 'NOT SET',
+    phoneId: process.env.WHATSAPP_PHONE_ID || 'NOT SET'
+  });
 });
 
 /* ------------------ START SERVER ------------------ */
