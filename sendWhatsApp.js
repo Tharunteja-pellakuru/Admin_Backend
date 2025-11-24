@@ -6,7 +6,6 @@ const https = require('https');
  * @param {string} message - Message text to send
  * @returns {Promise<{success: boolean, messageId?: string, error?: string}>}
  */
-const https = require("https");
 
 async function sendWhatsAppMessage(to, message) {
   return new Promise((resolve, reject) => {
