@@ -16,7 +16,7 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(
   cors({
-    origin: ["https://admin-page-steel-three.vercel.app", "https://careers-page-parivartan.vercel.app"],
+    origin: "*",
     credentials: true,
   })  
 );
@@ -699,37 +699,108 @@ app.delete("/jobs/:id", authenticateUser, async (req, res) => {
 app.post("/applicants", upload.single("resume"), async (req, res) => {
   const connection = await pool.getConnection();
   try {
-    const { job_id, basicFormData, applicationFormData } = req.body;
+    // 🔍 ENHANCED DEBUGGING - Log everything received
+    console.log('========== APPLICATION SUBMISSION DEBUG ==========');
+    console.log('📥 Request Body:', JSON.stringify(req.body, null, 2));
+    console.log('📎 File Info:', req.file ? {
+      fieldname: req.file.fieldname,
+      originalname: req.file.originalname,
+      filename: req.file.filename,
+      size: req.file.size
+    } : 'No file uploaded');
+    console.log('==================================================');
+    
+    // Support both old and new format
+    let job_id, full_name, email, phone, basicFormData, applicationFormData;
+    
+    // Check if new format (basicFormData/applicationFormData)
+    if (req.body.basicFormData || req.body.applicationFormData) {
+      job_id = req.body.job_id;
+      
+      // Parse JSON strings if they come as strings from FormData
+      const parsedBasicFormData = typeof req.body.basicFormData === 'string' 
+        ? JSON.parse(req.body.basicFormData) 
+        : req.body.basicFormData;
+      
+      const parsedApplicationFormData = typeof req.body.applicationFormData === 'string'
+        ? JSON.parse(req.body.applicationFormData)
+        : req.body.applicationFormData;
+
+      // Extract full_name and email from basicFormData
+      const fullNameField = parsedBasicFormData?.find(field => 
+        field.label === 'Full Name' || field.name === 'full_name' || field.name === 'fullName'
+      );
+      const emailField = parsedBasicFormData?.find(field => 
+        field.label === 'Email' || field.name === 'email'
+      );
+      const phoneField = parsedBasicFormData?.find(field => 
+        field.label === 'Phone' || field.name === 'phone'
+      );
+
+      full_name = fullNameField?.value || '';
+      email = emailField?.value || '';
+      phone = phoneField?.value || '';
+      
+      // 🔍 Log what was extracted from basicFormData
+      console.log('📋 Extracted from basicFormData:', {
+        fullNameField,
+        emailField,
+        phoneField,
+        extracted: { full_name, email, phone }
+      });
+      
+      basicFormData = parsedBasicFormData;
+      applicationFormData = parsedApplicationFormData;
+    } else {
+      // Old format - individual fields
+      job_id = req.body.job_id;
+      full_name = req.body.full_name;
+      email = req.body.email;
+      phone = req.body.phone;
+      
+      // Convert to new format for storage
+      basicFormData = [
+        { name: 'full_name', label: 'Full Name', value: full_name },
+        { name: 'email', label: 'Email', value: email },
+        { name: 'phone', label: 'Phone', value: phone }
+      ];
+      applicationFormData = req.body.fields_json 
+        ? (typeof req.body.fields_json === 'string' ? JSON.parse(req.body.fields_json) : req.body.fields_json)
+        : {};
+      
+      // 🔍 Log old format extraction
+      console.log('📋 Using old format - individual fields:', { job_id, full_name, email, phone });
+    }
+
     const resume_path = req.file ? `/uploads/resumes/${req.file.filename}` : null;
 
-    // Parse JSON strings if they come as strings from FormData
-    const parsedBasicFormData = typeof basicFormData === 'string' 
-      ? JSON.parse(basicFormData) 
-      : basicFormData;
-    
-    const parsedApplicationFormData = typeof applicationFormData === 'string'
-      ? JSON.parse(applicationFormData)
-      : applicationFormData;
-
-    // Extract full_name and email from basicFormData for validation and shortlisted_candidates
-    const fullNameField = parsedBasicFormData?.find(field => 
-      field.label === 'Full Name' || field.name === 'full_name' || field.name === 'fullName'
-    );
-    const emailField = parsedBasicFormData?.find(field => 
-      field.label === 'Email' || field.name === 'email'
-    );
-    const phoneField = parsedBasicFormData?.find(field => 
-      field.label === 'Phone' || field.name === 'phone'
-    );
-
-    const full_name = fullNameField?.value || '';
-    const email = emailField?.value || '';
-    const phone = phoneField?.value || '';
-
     if (!job_id || !full_name || !email) {
+      console.error('❌ Validation failed:', { 
+        job_id, 
+        full_name, 
+        email, 
+        phone,
+        hasBasicFormData: !!req.body.basicFormData,
+        hasApplicationFormData: !!req.body.applicationFormData,
+        bodyKeys: Object.keys(req.body)
+      });
+      
       return res.status(400).json({ 
         success: false, 
-        message: "Missing required fields: job_id, full_name, and email" 
+        message: "Missing required fields: job_id, full_name, and email",
+        debug: {
+          received: { 
+            job_id: job_id || null, 
+            full_name: full_name || null, 
+            email: email || null,
+            phone: phone || null
+          },
+          bodyKeys: Object.keys(req.body),
+          hasFile: !!req.file,
+          hint: req.body.basicFormData 
+            ? "basicFormData was provided but couldn't extract required fields. Check field names/labels."
+            : "No basicFormData found. Expected either basicFormData array or individual fields (job_id, full_name, email)."
+        }
       });
     }
 
@@ -742,15 +813,15 @@ app.post("/applicants", upload.single("resume"), async (req, res) => {
     // Generate UUID for applicant
     const applicantUuid = uuidv4();
 
-    // Insert into applicants table with correct column names
+    // Insert into applicants table
     const [applicantResult] = await connection.query(
       `INSERT INTO applicants (uuid, job_id, basicFormData, applicationFormData, resume_path) 
        VALUES (?, ?, ?, ?, ?)`,
       [
         applicantUuid,
         job_id,
-        JSON.stringify(parsedBasicFormData || []),
-        JSON.stringify(parsedApplicationFormData || {}),
+        JSON.stringify(basicFormData || []),
+        JSON.stringify(applicationFormData || {}),
         resume_path,
       ]
     );
@@ -773,7 +844,6 @@ app.post("/applicants", upload.single("resume"), async (req, res) => {
         "Application Screening"
       ]
     );
-
 
     await connection.commit();
 
@@ -800,6 +870,7 @@ app.post("/applicants", upload.single("resume"), async (req, res) => {
     connection.release();
   }
 });
+
 
 
 app.get("/applicants", authenticateUser, async (req, res) => {
@@ -1189,6 +1260,51 @@ app.delete("/applicants/:id", authenticateUser, async (req, res) => {
     return res.status(500).json({ success: false, message: "Internal server error" });
   } finally {
     connection.release();
+  }
+});
+
+/* ------------------ WHATSAPP API ------------------ */
+const { sendWhatsAppMessage } = require('./sendWhatsApp');
+
+// POST /api/whatsapp/send - Send WhatsApp message
+app.post('/api/whatsapp/send', authenticateUser, async (req, res) => {
+  try {
+    const { phone, message } = req.body;
+
+    // Validate input
+    if (!phone || !message) {
+      return res.status(400).json({
+        success: false,
+        error: 'Phone number and message are required'
+      });
+    }
+
+    // Validate phone number format (basic validation)
+    const cleanPhone = phone.replace(/[\s+\-()]/g, '');
+    if (!/^\d{10,15}$/.test(cleanPhone)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid phone number format. Use international format without + sign (e.g., 1234567890)'
+      });
+    }
+
+    console.log(`📱 WhatsApp send request from admin ${req.user.email} to ${phone}`);
+
+    // Send WhatsApp message
+    const result = await sendWhatsAppMessage(phone, message);
+
+    return res.status(200).json({
+      success: true,
+      messageId: result.messageId,
+      message: 'WhatsApp message sent successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ WhatsApp send error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to send WhatsApp message'
+    });
   }
 });
 
