@@ -714,14 +714,62 @@ app.post("/applicants", upload.single("resume"), async (req, res) => {
     } : 'No file uploaded');
     console.log('==================================================');
     
-    // Support both old and new format
+    // Support multiple formats
     let job_id, full_name, email, phone, basicFormData, applicationFormData;
     
-    // Check if new format (basicFormData/applicationFormData)
-    if (req.body.basicFormData || req.body.applicationFormData) {
+    // NEW: Check if frontend sends fields_json (object with all field values)
+    if (req.body.fields_json) {
       job_id = req.body.job_id;
       
-      // Parse JSON strings if they come as strings from FormData
+      // Parse fields_json if it's a string
+      const fieldsData = typeof req.body.fields_json === 'string' 
+        ? JSON.parse(req.body.fields_json) 
+        : req.body.fields_json;
+      
+      // Parse steps_json if provided (contains schema)
+      const stepsData = req.body.steps_json 
+        ? (typeof req.body.steps_json === 'string' ? JSON.parse(req.body.steps_json) : req.body.steps_json)
+        : null;
+      
+      console.log('📋 Parsed fields_json:', fieldsData);
+      console.log('📋 Parsed steps_json:', stepsData);
+      
+      // Extract basic info from fields_json
+      full_name = fieldsData['basic-fullname'] || req.body.full_name || '';
+      email = fieldsData['basic-email'] || req.body.email || '';
+      phone = fieldsData['basic-phone'] || req.body.phone || '';
+      
+      // Build basicFormData from basic-* fields
+      basicFormData = [];
+      const basicFields = ['basic-fullname', 'basic-email', 'basic-phone', 'basic-linkedin'];
+      
+      for (const fieldId of basicFields) {
+        if (fieldsData.hasOwnProperty(fieldId)) {
+          const fieldName = fieldId.replace('basic-', '');
+          basicFormData.push({
+            id: fieldId,
+            name: fieldName,
+            label: fieldName.charAt(0).toUpperCase() + fieldName.slice(1),
+            value: fieldsData[fieldId]
+          });
+        }
+      }
+      
+      // Build applicationFormData from app-* fields
+      applicationFormData = {};
+      for (const [fieldId, value] of Object.entries(fieldsData)) {
+        if (fieldId.startsWith('app-')) {
+          applicationFormData[fieldId] = value;
+        }
+      }
+      
+      console.log('📋 Built basicFormData:', basicFormData);
+      console.log('📋 Built applicationFormData:', applicationFormData);
+      
+    } else if (req.body.basicFormData || req.body.applicationFormData) {
+      // Format from new frontend implementation
+      job_id = req.body.job_id;
+      
       const parsedBasicFormData = typeof req.body.basicFormData === 'string' 
         ? JSON.parse(req.body.basicFormData) 
         : req.body.basicFormData;
@@ -745,18 +793,10 @@ app.post("/applicants", upload.single("resume"), async (req, res) => {
       email = emailField?.value || '';
       phone = phoneField?.value || '';
       
-      // 🔍 Log what was extracted from basicFormData
-      console.log('📋 Extracted from basicFormData:', {
-        fullNameField,
-        emailField,
-        phoneField,
-        extracted: { full_name, email, phone }
-      });
-      
       basicFormData = parsedBasicFormData;
       applicationFormData = parsedApplicationFormData;
     } else {
-      // Old format - individual fields
+      // Fallback: individual fields (oldest format)
       job_id = req.body.job_id;
       full_name = req.body.full_name;
       email = req.body.email;
@@ -772,8 +812,7 @@ app.post("/applicants", upload.single("resume"), async (req, res) => {
         ? (typeof req.body.fields_json === 'string' ? JSON.parse(req.body.fields_json) : req.body.fields_json)
         : {};
       
-      // 🔍 Log old format extraction
-      console.log('📋 Using old format - individual fields:', { job_id, full_name, email, phone });
+      console.log('📋 Using fallback format - individual fields:', { job_id, full_name, email, phone });
     }
 
     const resume_path = req.file ? `/uploads/resumes/${req.file.filename}` : null;
