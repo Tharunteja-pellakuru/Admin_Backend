@@ -858,20 +858,72 @@ app.post("/applicants", upload.single("resume"), async (req, res) => {
     });
 
   } catch (error) {
-    await connection.rollback();
-    console.error("Error submitting application:", error);
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        console.error("❌ Rollback error:", rollbackError);
+      }
+    }
+    
+    // Enhanced error logging
+    console.error("========== APPLICATION SUBMISSION ERROR ==========");
+    console.error("❌ Error Type:", error.constructor.name);
+    console.error("❌ Error Message:", error.message);
+    console.error("❌ Error Code:", error.code);
+    console.error("❌ SQL State:", error.sqlState);
+    console.error("❌ SQL Message:", error.sqlMessage);
+    console.error("❌ Stack Trace:", error.stack);
+    console.error("📋 Data being processed:", {
+      job_id,
+      full_name,
+      email,
+      phone,
+      has_resume: !!req.file,
+      resume_path
+    });
+    console.error("==================================================");
 
+    // Clean up uploaded file if exists
     if (req.file) {
-      fs.unlink(req.file.path, () => {});
+      fs.unlink(req.file.path, (unlinkErr) => {
+        if (unlinkErr) console.error("Failed to delete uploaded file:", unlinkErr);
+      });
+    }
+
+    // Determine error type and return appropriate message
+    let errorMessage = "Internal server error";
+    let errorDetails = {};
+
+    if (error.code === 'ER_NO_REFERENCED_ROW_2') {
+      errorMessage = "Invalid job ID. The job you're applying to doesn't exist.";
+      errorDetails.type = "INVALID_JOB_ID";
+    } else if (error.code === 'ER_DUP_ENTRY') {
+      errorMessage = "Duplicate application detected";
+      errorDetails.type = "DUPLICATE_APPLICATION";
+    } else if (error.code === 'ECONNREFUSED') {
+      errorMessage = "Database connection failed";
+      errorDetails.type = "DATABASE_CONNECTION_ERROR";
+    } else if (error.sqlMessage) {
+      errorMessage = "Database query error";
+      errorDetails.type = "SQL_ERROR";
+      errorDetails.sqlError = error.sqlMessage;
     }
 
     return res.status(500).json({ 
       success: false, 
-      message: "Internal server error",
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message: errorMessage,
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      details: process.env.NODE_ENV === 'development' ? errorDetails : undefined
     });
   } finally {
-    connection.release();
+    if (connection) {
+      try {
+        connection.release();
+      } catch (releaseError) {
+        console.error("❌ Connection release error:", releaseError);
+      }
+    }
   }
 });
 
